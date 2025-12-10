@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <title>时间序列预测 Demo</title>
+  <style>
+    body { font-family: sans-serif; max-width: 1600px; margin: 0 auto; padding: 24px; }
+    .card { border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    button { padding: 8px 14px; cursor: pointer; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: #f7f7f7; }
+    #chart-frame { width: 100%; height: 780px; border: 1px solid #ddd; border-radius: 6px; }
+    .markdown { background: #f9f9f9; padding: 12px; border-radius: 6px; }
+    .markdown h1, .markdown h2, .markdown h3 { margin-top: 12px; }
+    .markdown ul { padding-left: 20px; }
+    .markdown code { background: #eee; padding: 2px 4px; border-radius: 4px; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+  <h1>时间序列预测 Demo</h1>
+  <div class="card">
+    <h3>上传 Excel</h3>
+    <p>文件需包含日期列和数值列（可通过后端配置指定列名，当前示例默认 <code>date</code>/<code>value</code>）。</p>
+    <input type="file" id="file-input" accept=".xlsx,.xls" />
+    <button id="upload-btn">开始预测</button>
+    <span id="status"></span>
+  </div>
+
+  <div class="card">
+    <h3>评估指标</h3>
+    <div style="margin-bottom:8px;">
+      <a id="excel-link" href="/outputs/predictions.xlsx" download>下载预测结果 Excel</a>
+    </div>
+    <table id="metrics-table">
+      <thead><tr><th>模型</th><th>MAE</th><th>RMSE</th><th>MAPE</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>预测对比图</h3>
+    <iframe id="chart-frame" src=""></iframe>
+  </div>
+
+  <div class="card">
+    <h3>AI 分析 (Markdown)</h3>
+    <div id="llm-analysis" class="markdown">尚未生成</div>
+  </div>
+
+  <script>
+    const uploadBtn = document.getElementById('upload-btn');
+    const fileInput = document.getElementById('file-input');
+    const statusEl = document.getElementById('status');
+    const metricsTbody = document.querySelector('#metrics-table tbody');
+    const chartFrame = document.getElementById('chart-frame');
+    const llmEl = document.getElementById('llm-analysis');
+    const excelLink = document.getElementById('excel-link');
+
+    async function upload() {
+      const file = fileInput.files[0];
+      if (!file) { alert('请先选择 Excel 文件'); return; }
+      statusEl.textContent = '上传并计算中...';
+      const form = new FormData();
+      form.append('file', file);
+      try {
+        const res = await fetch('/upload', { method: 'POST', body: form });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        renderMetrics(data.metrics_table || []);
+        chartFrame.src = (data.chart_url || '/outputs/forecast_chart.html') + '?t=' + Date.now();
+        excelLink.href = (data.excel_url || '/outputs/predictions.xlsx') + '?t=' + Date.now();
+        const llmText = data.llm_analysis || '未生成（请确认已配置 DEEPSEEK_API_KEY/URL）';
+        llmEl.innerHTML = window.marked ? marked.parse(llmText) : llmText;
+        statusEl.textContent = '完成';
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = '失败';
+        alert('预测失败：' + err.message);
+      }
+    }
+
+    function renderMetrics(rows) {
+      metricsTbody.innerHTML = '';
+      rows.forEach(r => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${r.model}</td>
+          <td>${r.mae?.toFixed ? r.mae.toFixed(4) : r.mae}</td>
+          <td>${r.rmse?.toFixed ? r.rmse.toFixed(4) : r.rmse}</td>
+          <td>${r.mape?.toFixed ? r.mape.toFixed(4) : r.mape}</td>
+        `;
+        metricsTbody.appendChild(tr);
+      });
+    }
+
+    uploadBtn.addEventListener('click', upload);
+  </script>
+</body>
+</html>
+
